@@ -181,12 +181,26 @@ ConfigRelayer()
 LinkRelayer()
 {
     Logger "Starting function LinkRelayer"
-    # Logger "Debug sleep"
-    # sleep 600
-    Logger "Now connecting $PROVIDER_CHAIN and $CONSUMER_CHAIN"
-    (echo $KEYPASSWD; sleep 1; echo $KEYPASSWD) | rly transact link pc --home .relayer --src-port $RLY_SRC_PORT --dst-port $RLY_DST_PORT --order $RLY_ORDERING --version $RLY_CHANNEL_VERSION 1>> $LOGFILE 2>> $ERRFILE
-    RETCODE=$?
-    CheckRetcode $RETCODE 1 "Could not create a connection between chains $PROVIDER_CHAINID and $CONSUMER_CHAINID. Return code was $RETCODE. Exiting"
+    local cnt=0
+    local RETCODE_LNK=0
+    Logger "Now connecting $PROVIDER_CHAIN and $CONSUMER_CHAIN. This can take a few minutes..."
+    until [ $cnt -ge 3 ];
+    do    
+        (echo $KEYPASSWD; sleep 1; echo $KEYPASSWD) | rly transact link pc --home .relayer --src-port $RLY_SRC_PORT --dst-port $RLY_DST_PORT --order $RLY_ORDERING --version $RLY_CHANNEL_VERSION 1>> $LOGFILE 2>> $ERRFILE
+        RETCODE_LNK=$?
+        Logger "DEBUG RETCODE is $RETCODE_LNK"
+        if [ $RETCODE_LNK -ne 0 ];
+        then
+            cnt=$(( cnt + 1 ))
+            Logger "DEBUG cnt = $cnt"
+            Logger "DEBUG error is `tail -15 $ERRFILE`"
+            sleep 1
+        else
+            Logger "DEBUG break invoked"
+            break
+        fi
+    done
+    CheckRetcode $RETCODE_LNK 1 "Could not create a connection between chains $PROVIDER_CHAINID and $CONSUMER_CHAINID after 3 attempts. Exiting"
     Logger "Chains $PROVIDER_CHAINID and $CONSUMER_CHAINID successfully connected"
     Logger "Exiting function LinkRelayer"
 }
@@ -204,11 +218,24 @@ CheckLaunchReadiness()
         if [[ ${RETCODEP} -eq 0 && ${RETCODEC} -eq 0 ]]; then
             break
         fi
-        Logger "DEBUG Provider chain $PROVIDER_CHAINID shows $RETCODEP and consumer chain $CONSUMER_CHAINID shows $RETCODEC"
         Logger "Waiting for provider chain $PROVIDER_CHAINID and consumer chain $CONSUMER_CHAINID to come online"
         sleep $SLEEPTIME
     done
-    Logger "Both provider and consumer chains are online. Continuing"
+    Logger "Ensuring both provider and consumer chains are producing blocks"
+    local BLOCKNUM=3 # Height should be at least 2 in order to link the chains via IBC
+    while true
+    do
+        rly q header $PROVIDER_CHAIN $BLOCKNUM --home .relayer 1>> $LOGFILE 2>> $ERRFILE
+        RETCODEP=$?
+        rly q header $CONSUMER_CHAIN $BLOCKNUM --home .relayer 1>> $LOGFILE 2>> $ERRFILE
+        RETCODEC=$?
+        if [[ ${RETCODEP} -eq 0 && ${RETCODEC} -eq 0 ]]; then
+            break
+        fi
+        Logger "Waiting for provider chain $PROVIDER_CHAINID and consumer chain $CONSUMER_CHAINID to produce blocks"
+        sleep $SLEEPTIME
+    done
+    Logger "Both provider and consumer chains are online and producing blocks. Continuing"
     Logger "Exiting function CheckLaunchReadiness"
 }
 
