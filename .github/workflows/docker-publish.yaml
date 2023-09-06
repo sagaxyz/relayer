@@ -60,4 +60,4 @@ jobs:
             GITHUB_USER=${{ secrets.GH_USER }}
             GITHUB_TOKEN=${{ secrets.GH_ACCESS_TOKEN }}
           platforms: linux/amd64
-          tags: sagaxyz/go-relayer:${{ steps.meta.outputs.tag }}, sagaxyz/spc:latest
+          tags: sagaxyz/go-relayer:${{ steps.meta.outputs.tag }}, sagaxyz/go-relayer:latest

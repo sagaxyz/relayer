@@ -247,4 +247,4 @@ GenerateChainFiles
 ConfigRelayer
 CheckLaunchReadiness
 LinkRelayer
-rly start pc --home .relayer
+(echo $KEYPASSWD; sleep 1; echo $KEYPASSWD) | rly start pc --home .relayer
