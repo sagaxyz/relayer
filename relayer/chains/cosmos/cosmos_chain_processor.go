@@ -12,6 +12,7 @@ import (
 	clienttypes "github.com/cosmos/ibc-go/v7/modules/core/02-client/types"
 	conntypes "github.com/cosmos/ibc-go/v7/modules/core/03-connection/types"
 	chantypes "github.com/cosmos/ibc-go/v7/modules/core/04-channel/types"
+	ibcexported "github.com/cosmos/ibc-go/v7/modules/core/exported"
 	"github.com/cosmos/relayer/v2/relayer/processor"
 	"github.com/cosmos/relayer/v2/relayer/provider"
 
@@ -70,6 +71,7 @@ func NewCosmosChainProcessor(log *zap.Logger, provider *CosmosProvider, metrics 
 
 const (
 	queryTimeout                = 5 * time.Second
+	queryStateTimeout           = 60 * time.Second
 	blockResultsQueryTimeout    = 2 * time.Minute
 	latestHeightQueryRetryDelay = 1 * time.Second
 	latestHeightQueryRetries    = 5
@@ -166,15 +168,29 @@ func (ccp *CosmosChainProcessor) clientState(ctx context.Context, clientID strin
 	if state, ok := ccp.latestClientState[clientID]; ok && state.TrustingPeriod > 0 {
 		return state, nil
 	}
-	cs, err := ccp.chainProvider.queryTMClientState(ctx, int64(ccp.latestBlock.Height), clientID)
-	if err != nil {
-		return provider.ClientState{}, err
+
+	var clientState provider.ClientState
+	if clientID == ibcexported.LocalhostClientID {
+		cs, err := ccp.chainProvider.queryLocalhostClientState(ctx, int64(ccp.latestBlock.Height))
+		if err != nil {
+			return provider.ClientState{}, err
+		}
+		clientState = provider.ClientState{
+			ClientID:        clientID,
+			ConsensusHeight: cs.GetLatestHeight().(clienttypes.Height),
+		}
+	} else {
+		cs, err := ccp.chainProvider.queryTMClientState(ctx, int64(ccp.latestBlock.Height), clientID)
+		if err != nil {
+			return provider.ClientState{}, err
+		}
+		clientState = provider.ClientState{
+			ClientID:        clientID,
+			ConsensusHeight: cs.GetLatestHeight().(clienttypes.Height),
+			TrustingPeriod:  cs.TrustingPeriod,
+		}
 	}
-	clientState := provider.ClientState{
-		ClientID:        clientID,
-		ConsensusHeight: cs.GetLatestHeight().(clienttypes.Height),
-		TrustingPeriod:  cs.TrustingPeriod,
-	}
+
 	ccp.latestClientState[clientID] = clientState
 	return clientState, nil
 }
@@ -264,7 +280,7 @@ func (ccp *CosmosChainProcessor) Run(ctx context.Context, initialBlockHistory ui
 
 // initializeConnectionState will bootstrap the connectionStateCache with the open connection state.
 func (ccp *CosmosChainProcessor) initializeConnectionState(ctx context.Context) error {
-	ctx, cancel := context.WithTimeout(ctx, queryTimeout)
+	ctx, cancel := context.WithTimeout(ctx, queryStateTimeout)
 	defer cancel()
 	connections, err := ccp.chainProvider.QueryConnections(ctx)
 	if err != nil {
@@ -284,7 +300,7 @@ func (ccp *CosmosChainProcessor) initializeConnectionState(ctx context.Context) 
 
 // initializeChannelState will bootstrap the channelStateCache with the open channel state.
 func (ccp *CosmosChainProcessor) initializeChannelState(ctx context.Context) error {
-	ctx, cancel := context.WithTimeout(ctx, queryTimeout)
+	ctx, cancel := context.WithTimeout(ctx, queryStateTimeout)
 	defer cancel()
 	channels, err := ccp.chainProvider.QueryChannels(ctx)
 	if err != nil {
@@ -300,12 +316,13 @@ func (ccp *CosmosChainProcessor) initializeChannelState(ctx context.Context) err
 			continue
 		}
 		ccp.channelConnections[ch.ChannelId] = ch.ConnectionHops[0]
-		ccp.channelStateCache[processor.ChannelKey{
+		k := processor.ChannelKey{
 			ChannelID:             ch.ChannelId,
 			PortID:                ch.PortId,
 			CounterpartyChannelID: ch.Counterparty.ChannelId,
 			CounterpartyPortID:    ch.Counterparty.PortId,
-		}] = ch.State == chantypes.OPEN
+		}
+		ccp.channelStateCache.SetOpen(k, ch.State == chantypes.OPEN, ch.Ordering)
 	}
 	return nil
 }
@@ -371,17 +388,27 @@ func (ccp *CosmosChainProcessor) queryCycle(ctx context.Context, persistence *qu
 			queryCtx, cancelQueryCtx := context.WithTimeout(ctx, blockResultsQueryTimeout)
 			defer cancelQueryCtx()
 			blockRes, err = ccp.chainProvider.RPCClient.BlockResults(queryCtx, &i)
+			if err != nil && ccp.metrics != nil {
+				ccp.metrics.IncBlockQueryFailure(chainID, "RPC Client")
+			}
 			return err
 		})
 		eg.Go(func() (err error) {
 			queryCtx, cancelQueryCtx := context.WithTimeout(ctx, queryTimeout)
 			defer cancelQueryCtx()
 			ibcHeader, err = ccp.chainProvider.QueryIBCHeader(queryCtx, i)
+			if err != nil && ccp.metrics != nil {
+				ccp.metrics.IncBlockQueryFailure(chainID, "IBC Header")
+			}
 			return err
 		})
 
 		if err := eg.Wait(); err != nil {
-			ccp.log.Warn("Error querying block data", zap.Error(err))
+			ccp.log.Debug(
+				"Error querying block data",
+				zap.Int64("height", i),
+				zap.Error(err),
+			)
 
 			persistence.retriesAtLatestQueriedBlock++
 			if persistence.retriesAtLatestQueriedBlock >= blockMaxRetries {
@@ -393,6 +420,13 @@ func (ccp *CosmosChainProcessor) queryCycle(ctx context.Context, persistence *qu
 			}
 			break
 		}
+
+		ccp.log.Debug(
+			"Queried block",
+			zap.Int64("height", i),
+			zap.Int64("latest", persistence.latestHeight),
+			zap.Int64("delta", persistence.latestHeight-i),
+		)
 
 		persistence.retriesAtLatestQueriedBlock = 0
 
@@ -505,22 +539,25 @@ func (ccp *CosmosChainProcessor) CurrentRelayerBalance(ctx context.Context) {
 	}
 
 	// Get the balance for the chain provider's key
-	relayerWalletBalance, err := ccp.chainProvider.QueryBalance(ctx, ccp.chainProvider.Key())
+	relayerWalletBalances, err := ccp.chainProvider.QueryBalance(ctx, ccp.chainProvider.Key())
 	if err != nil {
 		ccp.log.Error(
 			"Failed to query relayer balance",
 			zap.Error(err),
 		)
 	}
-
+	address, err := ccp.chainProvider.Address()
+	if err != nil {
+		ccp.log.Error(
+			"Failed to get relayer bech32 wallet addresss",
+			zap.Error(err),
+		)
+	}
 	// Print the relevant gas prices
 	for _, gasDenom := range *ccp.parsedGasPrices {
-		for _, balance := range relayerWalletBalance {
-			if balance.Denom == gasDenom.Denom {
-				// Convert to a big float to get a float64 for metrics
-				f, _ := big.NewFloat(0.0).SetInt(balance.Amount.BigInt()).Float64()
-				ccp.metrics.SetWalletBalance(ccp.chainProvider.ChainId(), ccp.chainProvider.Key(), balance.Denom, f)
-			}
-		}
+		bal := relayerWalletBalances.AmountOf(gasDenom.Denom)
+		// Convert to a big float to get a float64 for metrics
+		f, _ := big.NewFloat(0.0).SetInt(bal.BigInt()).Float64()
+		ccp.metrics.SetWalletBalance(ccp.chainProvider.ChainId(), ccp.chainProvider.PCfg.GasPrices, ccp.chainProvider.Key(), address, gasDenom.Denom, f)
 	}
 }
