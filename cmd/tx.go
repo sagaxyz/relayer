@@ -723,6 +723,7 @@ $ %s tx link-then-start demo-path --timeout 5s`, appName, appName)),
 	cmd = initBlockFlag(a.viper, cmd)
 	cmd = processorFlag(a.viper, cmd)
 	cmd = updateTimeFlags(a.viper, cmd)
+	cmd = flushIntervalFlag(a.viper, cmd)
 	return cmd
 }
 
@@ -781,7 +782,7 @@ $ %s tx flush demo-path channel-0`,
 				return err
 			}
 
-			maxTxSize, maxMsgLength, err := GetStartOptions(cmd)
+			maxMsgLength, err := cmd.Flags().GetUint64(flagMaxMsgLength)
 			if err != nil {
 				return err
 			}
@@ -802,7 +803,7 @@ $ %s tx flush demo-path channel-0`,
 				a.log,
 				chains,
 				paths,
-				maxTxSize, maxMsgLength,
+				maxMsgLength,
 				a.config.memo(cmd),
 				0,
 				0,

@@ -5,27 +5,24 @@
 **Prometheus exporter**
 
 If you started `rly` with the default `--debug-addr` argument,
-you can use `http://$IP:7597/relayer/metrics` as a target for your prometheus scraper.
+you can use `http://$IP:5183/relayer/metrics` as a target for your prometheus scraper.
 
-**Example metrics**
 
-```
-go_goroutines 29
-...
-go_threads 39
-...
-observed_packets{chain="cosmoshub-4",channel="channel-141",path="hubosmo",port="transfer",type="acknowledge_packet"} 57
-observed_packets{chain="cosmoshub-4",channel="channel-141",path="hubosmo",port="transfer",type="recv_packet"} 103
-observed_packets{chain="cosmoshub-4",channel="channel-141",path="hubosmo",port="transfer",type="send_packet"} 58
-observed_packets{chain="osmosis-1",channel="channel-0",path="hubosmo",port="transfer",type="acknowledge_packet"} 107
-observed_packets{chain="osmosis-1",channel="channel-0",path="hubosmo",port="transfer",type="recv_packet"} 60
-observed_packets{chain="osmosis-1",channel="channel-0",path="hubosmo",port="transfer",type="send_packet"} 102
-...
-relayed_packets{chain="cosmoshub-4",channel="channel-141",path="hubosmo",port="transfer",type="acknowledge_packet"} 31
-relayed_packets{chain="cosmoshub-4",channel="channel-141",path="hubosmo",port="transfer",type="recv_packet"} 65
-relayed_packets{chain="osmosis-1",channel="channel-0",path="hubosmo",port="transfer",type="acknowledge_packet"} 36
-relayed_packets{chain="osmosis-1",channel="channel-0",path="hubosmo",port="transfer",type="recv_packet"} 35
-```
+Exported metrics:
+
+|              **Exported Metric**              	|                                                                                                        **Description**                                                                                                       	| **Type** 	|
+|:---------------------------------------------:	|:----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------:	|:--------:	|
+| cosmos_relayer_observed_packets               	| The total number of observed packets                                                                                                                                                                                         	|  Counter 	|
+| cosmos_relayer_relayed_packets                	| The total number of relayed packets                                                                                                                                                                                          	|  Counter 	|
+| cosmos_relayer_chain_latest_height            	| The current height of the chain                                                                                                                                                                                              	|   Gauge  	|
+| cosmos_relayer_wallet_balance                 	| The current balance for the relayer's wallet                                                                                                                                                                                 	|   Gauge  	|
+| cosmos_relayer_fees_spent                     	| The amount of fees spent from the relayer's wallet                                                                                                                                                                           	|   Gauge  	|
+| cosmos_relayer_tx_failure                     	| <br>The total number of tx failures broken up into categories:<br> - "packet messages are redundant"<br> - "insufficient funds"<br> - "invalid coins"<br> - "out of gas"<br><br><br>"Tx Failure" is the the catch all bucket 	|  Counter 	|
+| cosmos_relayer_block_query_errors_total       	| The total number of block query failures. The failures are separated into two categories:<br> - "RPC Client"<br> - "IBC Header"                                                                                              	| Counter  	|
+| cosmos_relayer_client_expiration_seconds      	| Seconds until the client expires                                                                                                                                                                                             	| Gauge    	|
+| cosmos_relayer_client_trusting_period_seconds 	| The trusting period (in seconds) of the client                                                                                                                                                                               	| Gauge    	|
+
+
 
 ---
 
@@ -54,7 +51,33 @@ Use cases for configuring the `--time-threshold` flag:
 
 \* It is not mandatory for relayers to include the `MsgUpdateClient` when relaying packets, however most, if not all relayers currently do.
 
----
+## Feegrants
 
+Feegrant configurations can be applied to each chain in the relayer. Note that Osmosis does not support Feegrants.
+
+ - When feegrants are enabled, TXs will be signed in round robin by the grantees.
+ - Feegrants reduce sequencing error rates by using many signing addresses instead of a single signer, especially when broadcast-mode is set to single.
+ - Feegrants are especially useful when relaying on multiple paths with the same wallet.
+ - Funds are held on a single address, the "granter".
+
+For example, configure feegrants for Kujira:
+- `rly chains configure feegrant basicallowance kujira default --num-grantees 10`
+- Note: above, `default` is the key that will need to contain funds (the granter)
+- 10 grantees will be configured, so those 10 address will sign TXs in round robin order.
+
+
+You may also choose to specify the exact names of your grantees:
+- `rly chains configure feegrant basicallowance kujira default --grantees "kuji1,kuji2,kuji3"`
+
+Rerunning the feegrant command will simply confirm your configuration is correct, e.g. "Valid grant found for granter `addr` and grantee `addr2`" but will not create additional TXs on chain. Rerunning the feegrant command can therefore be a good way to check what addresses exist.
+
+
+To remove the feegrant configuration:
+- `rly chains configure feegrant basicallowance kujira --delete`
+
+
+
+
+---
 
 [<-- Create Path Across Chains](create-path-across-chain.md) - [Troubleshooting -->](./troubleshooting.md)
