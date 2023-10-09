@@ -9,6 +9,8 @@ services:
       dockerfile: saga.Dockerfile
     environment:
       - KEYNAME=relayer
+      - PROVIDER_CHAIN=
+      - CONSUMER_CHAIN=
       - PROVIDER_CHAINID=
       - CONSUMER_CHAINID=
       - PROVIDER_RLY_MNEMONIC=
@@ -22,6 +24,17 @@ services:
       - RLY_DST_PORT=provider # Do not change unless you know what you are doing
       - RLY_ORDERING=ordered # Do not change unless you know what you are doing
       - RLY_DEBUG=true # set it to false as needed
+      - PROVIDER_CHAIN_ADDRESS_PREFIX=
+      - CONSUMER_CHAIN_ADDRESS_PREFIX=
+      - PROVIDER_RLY_GASPRICE=
+      - PROVIDER_RLY_MAXGASAMT=
+      - PROVIDER_RLY_MINGASAMT=1
+      - PROVIDER_RLY_BROADCAST_MODE=sync
+      - CONSUMER_RLY_GASPRICE=
+      - CONSUMER_RLY_MAXGASAMT=
+      - CONSUMER_RLY_MINGASAMT=1
+      - CONSUMER_RLY_BROADCAST_MODE=sync
+      - RLY_CHANNEL_VERSION=  # Use ics20-1 when using source and dst ports as transfer
     networks:
       - localnet
     ports:

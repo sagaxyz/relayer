@@ -7,8 +7,6 @@ SLEEPTIME_BLOCKWAIT=${SLEEPTIME_BLOCKWAIT:-1}
 
 PROVIDER_CHAIN=${PROVIDER_CHAIN:-provider}
 CONSUMER_CHAIN=${CONSUMER_CHAIN:-consumer}
-PROVIDER_RLY_GASPRICE=${PROVIDER_RLY_GASPRICE:-0stake}
-CONSUMER_RLY_GASPRICE=${CONSUMER_RLY_GASPRICE:-0stake}
 PROVIDER_RLY_CLIENTID=${PROVIDER_RLY_CLIENTID:-07-tendermint-0}
 CONSUMER_RLY_CLIENTID=${CONSUMER_RLY_CLIENTID:-07-tendermint-0}
 RLY_SRC_PORT=${RLY_SRC_PORT:-transfer}
@@ -16,6 +14,24 @@ RLY_DST_PORT=${RLY_DST_PORT:-transfer}
 RLY_ORDERING=${RLY_ORDERING:-unordered}
 RLY_CHANNEL_VERSION=${RLY_CHANNEL_VERSION:-1}
 RLY_DEBUG=${RLY_DEBUG:-false}
+PATHNAME=${PATHNAME:-pc}
+
+# Broadcasting
+PROVIDER_RLY_BROADCAST_MODE=${PROVIDER_RLY_BROADCAST_MODE:-sync}
+CONSUMER_RLY_BROADCAST_MODE=${CONSUMER_RLY_BROADCAST_MODE:-sync}
+
+# Address prefix
+PROVIDER_CHAIN_ADDRESS_PREFIX=${PROVIDER_CHAIN_ADDRESS_PREFIX:-saga}
+CONSUMER_CHAIN_ADDRESS_PREFIX=${CONSUMER_CHAIN_ADDRESS_PREFIX:-saga}
+
+#Gas
+PROVIDER_RLY_GASPRICE=${PROVIDER_RLY_GASPRICE:-0stake}
+CONSUMER_RLY_GASPRICE=${CONSUMER_RLY_GASPRICE:-0stake}
+PROVIDER_RLY_MAXGASAMT=${PROVIDER_RLY_MAXGASAMT:-0}
+CONSUMER_RLY_MAXGASAMT=${CONSUMER_RLY_MAXGASAMT:-0}
+PROVIDER_RLY_MINGASAMT=${PROVIDER_RLY_MINGASAMT:-0}
+CONSUMER_RLY_MINGASAMT=${CONSUMER_RLY_MINGASAMT:-0}
+
 
 KEYRING=${KEYRING:-file}
 TESTKEYRING="test"
@@ -93,13 +109,22 @@ ValidateAndEchoEnvVars()
   ValidateEnvVar CONSUMER_RPC_ADDRESS
   ValidateEnvVar PROVIDER_RLY_GASPRICE
   ValidateEnvVar CONSUMER_RLY_GASPRICE
+  ValidateEnvVar PROVIDER_RLY_MAXGASAMT
+  ValidateEnvVar CONSUMER_RLY_MAXGASAMT
+  ValidateEnvVar PROVIDER_RLY_MINGASAMT
+  ValidateEnvVar CONSUMER_RLY_MINGASAMT
   ValidateEnvVar PROVIDER_RLY_CLIENTID
   ValidateEnvVar CONSUMER_RLY_CLIENTID
+  ValidateEnvVar PROVIDER_CHAIN_ADDRESS_PREFIX
+  ValidateEnvVar CONSUMER_CHAIN_ADDRESS_PREFIX
+  ValidateEnvVar PROVIDER_RLY_BROADCAST_MODE
+  ValidateEnvVar CONSUMER_RLY_BROADCAST_MODE
   ValidateEnvVar RLY_SRC_PORT
   ValidateEnvVar RLY_DST_PORT
   ValidateEnvVar RLY_ORDERING
   ValidateEnvVar RLY_CHANNEL_VERSION
   ValidateEnvVar RLY_DEBUG
+  ValidateEnvVar PATHNAME
   ValidateEnvVar KEYRING
   ValidateEnvVar SLEEPTIME 0 1
   ValidateEnvVar KEYALGO
@@ -127,20 +152,28 @@ GenerateChainFiles()
     jq --arg KEYRING $KEYRING '.value."keyring-backend" = $KEYRING' /root/provider-rly.json > /root/provider-rly-tmp.json && mv /root/provider-rly-tmp.json /root/provider-rly.json
     jq --argjson DEBUG $RLY_DEBUG '.value.debug = $DEBUG' /root/provider-rly.json > /root/provider-rly-tmp.json && mv /root/provider-rly-tmp.json /root/provider-rly.json
     jq --arg GAS $PROVIDER_RLY_GASPRICE '.value."gas-prices" = $GAS' /root/provider-rly.json > /root/provider-rly-tmp.json && mv /root/provider-rly-tmp.json /root/provider-rly.json
-
+    jq --arg ACCTPREFIX $PROVIDER_CHAIN_ADDRESS_PREFIX '.value."account-prefix" = $ACCTPREFIX' /root/provider-rly.json > /root/provider-rly-tmp.json && mv /root/provider-rly-tmp.json /root/provider-rly.json
+    jq --argjson MAXGAS $PROVIDER_RLY_MAXGASAMT '.value."max-gas-amount" = $MAXGAS' /root/provider-rly.json > /root/provider-rly-tmp.json && mv /root/provider-rly-tmp.json /root/provider-rly.json
+    jq --argjson MINGAS $PROVIDER_RLY_MINGASAMT '.value."min-gas-amount" = $MINGAS' /root/provider-rly.json > /root/provider-rly-tmp.json && mv /root/provider-rly-tmp.json /root/provider-rly.json
+    jq --arg BROADCASTMODE $PROVIDER_RLY_BROADCAST_MODE '.value."broadcast-mode" = $BROADCASTMODE' /root/provider-rly.json > /root/provider-rly-tmp.json && mv /root/provider-rly-tmp.json /root/provider-rly.json
+    
     jq --arg KEY $KEYNAME '.value.key = $KEY' /root/consumer-rly.json > /root/consumer-rly-tmp.json && mv /root/consumer-rly-tmp.json /root/consumer-rly.json
     jq --arg CHAINID $CONSUMER_CHAINID '.value."chain-id" = $CHAINID' /root/consumer-rly.json > /root/consumer-rly-tmp.json && mv /root/consumer-rly-tmp.json /root/consumer-rly.json
     jq --arg RPCADDR $CONSUMER_RPC_ADDRESS '.value."rpc-addr" = $RPCADDR' /root/consumer-rly.json > /root/consumer-rly-tmp.json && mv /root/consumer-rly-tmp.json /root/consumer-rly.json
     jq --arg KEYRING $KEYRING '.value."keyring-backend" = $KEYRING' /root/consumer-rly.json > /root/consumer-rly-tmp.json && mv /root/consumer-rly-tmp.json /root/consumer-rly.json
     jq --argjson DEBUG $RLY_DEBUG '.value.debug = $DEBUG' /root/consumer-rly.json > /root/consumer-rly-tmp.json && mv /root/consumer-rly-tmp.json /root/consumer-rly.json
     jq --arg GAS $CONSUMER_RLY_GASPRICE '.value."gas-prices" = $GAS' /root/consumer-rly.json > /root/consumer-rly-tmp.json && mv /root/consumer-rly-tmp.json /root/consumer-rly.json
+    jq --arg ACCTPREFIX $CONSUMER_CHAIN_ADDRESS_PREFIX '.value."account-prefix" = $ACCTPREFIX' /root/consumer-rly.json > /root/consumer-rly-tmp.json && mv /root/consumer-rly-tmp.json /root/consumer-rly.json
+    jq --argjson MAXGAS $CONSUMER_RLY_MAXGASAMT '.value."max-gas-amount" = $MAXGAS' /root/consumer-rly.json > /root/consumer-rly-tmp.json && mv /root/consumer-rly-tmp.json /root/consumer-rly.json
+    jq --argjson MINGAS $CONSUMER_RLY_MINGASAMT '.value."min-gas-amount" = $MINGAS' /root/consumer-rly.json > /root/consumer-rly-tmp.json && mv /root/consumer-rly-tmp.json /root/consumer-rly.json
+    jq --arg BROADCASTMODE $CONSUMER_RLY_BROADCAST_MODE '.value."broadcast-mode" = $BROADCASTMODE' /root/consumer-rly.json > /root/consumer-rly-tmp.json && mv /root/consumer-rly-tmp.json /root/consumer-rly.json
+
     Logger "Exiting function GenerateChainFiles"
 }
 
 ConfigRelayer()
 {
     Logger "Starting function ConfigRelayer"
-    local PATHNAME=pc
     rly chains add $PROVIDER_CHAIN --file /root/provider-rly.json --home .relayer 1>> $LOGFILE 2>> $ERRFILE
     RETCODE=$?
     CheckRetcode $RETCODE 1 "Could not add chain $PROVIDER_CHAINID to relayer config. Return code was $RETCODE. Exiting"
@@ -170,11 +203,14 @@ ConfigRelayer()
     rly paths new $CONSUMER_CHAINID $PROVIDER_CHAINID $PATHNAME --home .relayer 1>> $LOGFILE 2>> $ERRFILE
     RETCODE=$?
     CheckRetcode $RETCODE 1 "Could not create a new path for chains $PROVIDER_CHAINID and $CONSUMER_CHAINID. Return code was $RETCODE. Exiting"
-    Logger "New path $PATHNAME successfully created for chains $PROVIDER_CHAINID and $CONSUMER_CHAINID"
-    rly paths update $PATHNAME --src-client-id $CONSUMER_RLY_CLIENTID --dst-client-id $PROVIDER_RLY_CLIENTID --home .relayer 1>> $LOGFILE 2>> $ERRFILE
-    RETCODE=$?
-    CheckRetcode $RETCODE 1 "Could not update the path with source/destination client-id for chains $PROVIDER_CHAINID and $CONSUMER_CHAINID. Return code was $RETCODE. Exiting"
-    Logger "Path $PATHNAME successfully updated for chains $PROVIDER_CHAINID and $CONSUMER_CHAINID"
+    if [[ "$RLY_SRC_PORT" != "transfer" && "$RLY_DST_PORT" != "transfer" ]];
+    then
+        Logger "New path $PATHNAME successfully created for chains $PROVIDER_CHAINID and $CONSUMER_CHAINID"
+        rly paths update $PATHNAME --src-client-id $CONSUMER_RLY_CLIENTID --dst-client-id $PROVIDER_RLY_CLIENTID --home .relayer 1>> $LOGFILE 2>> $ERRFILE
+        RETCODE=$?
+        CheckRetcode $RETCODE 1 "Could not update the path with source/destination client-id for chains $PROVIDER_CHAINID and $CONSUMER_CHAINID. Return code was $RETCODE. Exiting"
+        Logger "Path $PATHNAME successfully updated for chains $PROVIDER_CHAINID and $CONSUMER_CHAINID"
+    fi
     Logger "Exiting function ConfigRelayer"
 }
 
@@ -186,7 +222,7 @@ LinkRelayer()
     Logger "Now connecting $PROVIDER_CHAIN and $CONSUMER_CHAIN. This can take a few minutes..."
     until [ $cnt -ge 3 ];
     do    
-        (echo $KEYPASSWD; sleep 1; echo $KEYPASSWD) | rly transact link pc --home .relayer --src-port $RLY_SRC_PORT --dst-port $RLY_DST_PORT --order $RLY_ORDERING --version $RLY_CHANNEL_VERSION 1>> $LOGFILE 2>> $ERRFILE
+        (echo $KEYPASSWD; sleep 1; echo $KEYPASSWD) | rly transact link $PATHNAME --home .relayer --src-port $RLY_SRC_PORT --dst-port $RLY_DST_PORT --order $RLY_ORDERING --version $RLY_CHANNEL_VERSION 1>> $LOGFILE 2>> $ERRFILE
         RETCODE_LNK=$?
         Logger "DEBUG RETCODE is $RETCODE_LNK"
         if [ $RETCODE_LNK -ne 0 ];
@@ -221,21 +257,24 @@ CheckLaunchReadiness()
         Logger "Waiting for provider chain $PROVIDER_CHAINID and consumer chain $CONSUMER_CHAINID to come online"
         sleep $SLEEPTIME
     done
-    Logger "Ensuring both provider and consumer chains are producing blocks"
-    local BLOCKNUM=3 # Height should be at least 2 in order to link the chains via IBC
-    while true
-    do
-        rly q header $PROVIDER_CHAIN $BLOCKNUM --home .relayer 1>> $LOGFILE 2>> $ERRFILE
-        RETCODEP=$?
-        rly q header $CONSUMER_CHAIN $BLOCKNUM --home .relayer 1>> $LOGFILE 2>> $ERRFILE
-        RETCODEC=$?
-        if [[ ${RETCODEP} -eq 0 && ${RETCODEC} -eq 0 ]]; then
-            break
-        fi
-        Logger "Waiting for provider chain $PROVIDER_CHAINID and consumer chain $CONSUMER_CHAINID to produce blocks"
-        sleep $SLEEPTIME
-    done
-    Logger "Both provider and consumer chains are online and producing blocks. Continuing"
+    if [[ "$RLY_SRC_PORT" != "transfer" && "$RLY_DST_PORT" != "transfer" ]];
+    then
+        Logger "Ensuring both provider and consumer chains are producing blocks"
+        local BLOCKNUM=3 # Height should be at least 2 in order to link the chains via IBC
+        while true
+        do
+            rly q header $PROVIDER_CHAIN $BLOCKNUM --home .relayer 1>> $LOGFILE 2>> $ERRFILE
+            RETCODEP=$?
+            rly q header $CONSUMER_CHAIN $BLOCKNUM --home .relayer 1>> $LOGFILE 2>> $ERRFILE
+            RETCODEC=$?
+            if [[ ${RETCODEP} -eq 0 && ${RETCODEC} -eq 0 ]]; then
+                break
+            fi
+            Logger "Waiting for provider chain $PROVIDER_CHAINID and consumer chain $CONSUMER_CHAINID to produce blocks"
+            sleep $SLEEPTIME
+        done
+        Logger "Both provider and consumer chains are online and producing blocks. Continuing"
+    fi
     Logger "Exiting function CheckLaunchReadiness"
 }
 
@@ -247,4 +286,4 @@ GenerateChainFiles
 ConfigRelayer
 CheckLaunchReadiness
 LinkRelayer
-(echo $KEYPASSWD; sleep 1; echo $KEYPASSWD) | rly start pc --home .relayer
+(echo $KEYPASSWD; sleep 1; echo $KEYPASSWD) | rly start $PATHNAME --home .relayer
