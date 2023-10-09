@@ -14,6 +14,11 @@ RLY_DST_PORT=${RLY_DST_PORT:-transfer}
 RLY_ORDERING=${RLY_ORDERING:-unordered}
 RLY_CHANNEL_VERSION=${RLY_CHANNEL_VERSION:-1}
 RLY_DEBUG=${RLY_DEBUG:-false}
+PATHNAME=${PATHNAME:-pc}
+
+# Broadcasting
+PROVIDER_RLY_BROADCAST_MODE=${PROVIDER_RLY_BROADCAST_MODE:-sync}
+CONSUMER_RLY_BROADCAST_MODE=${CONSUMER_RLY_BROADCAST_MODE:-sync}
 
 # Address prefix
 PROVIDER_CHAIN_ADDRESS_PREFIX=${PROVIDER_CHAIN_ADDRESS_PREFIX:-saga}
@@ -112,11 +117,14 @@ ValidateAndEchoEnvVars()
   ValidateEnvVar CONSUMER_RLY_CLIENTID
   ValidateEnvVar PROVIDER_CHAIN_ADDRESS_PREFIX
   ValidateEnvVar CONSUMER_CHAIN_ADDRESS_PREFIX
+  ValidateEnvVar PROVIDER_RLY_BROADCAST_MODE
+  ValidateEnvVar CONSUMER_RLY_BROADCAST_MODE
   ValidateEnvVar RLY_SRC_PORT
   ValidateEnvVar RLY_DST_PORT
   ValidateEnvVar RLY_ORDERING
   ValidateEnvVar RLY_CHANNEL_VERSION
   ValidateEnvVar RLY_DEBUG
+  ValidateEnvVar PATHNAME
   ValidateEnvVar KEYRING
   ValidateEnvVar SLEEPTIME 0 1
   ValidateEnvVar KEYALGO
@@ -147,8 +155,8 @@ GenerateChainFiles()
     jq --arg ACCTPREFIX $PROVIDER_CHAIN_ADDRESS_PREFIX '.value."account-prefix" = $ACCTPREFIX' /root/provider-rly.json > /root/provider-rly-tmp.json && mv /root/provider-rly-tmp.json /root/provider-rly.json
     jq --argjson MAXGAS $PROVIDER_RLY_MAXGASAMT '.value."max-gas-amount" = $MAXGAS' /root/provider-rly.json > /root/provider-rly-tmp.json && mv /root/provider-rly-tmp.json /root/provider-rly.json
     jq --argjson MINGAS $PROVIDER_RLY_MINGASAMT '.value."min-gas-amount" = $MINGAS' /root/provider-rly.json > /root/provider-rly-tmp.json && mv /root/provider-rly-tmp.json /root/provider-rly.json
+    jq --arg BROADCASTMODE $PROVIDER_RLY_BROADCAST_MODE '.value."broadcast-mode" = $BROADCASTMODE' /root/provider-rly.json > /root/provider-rly-tmp.json && mv /root/provider-rly-tmp.json /root/provider-rly.json
     
-
     jq --arg KEY $KEYNAME '.value.key = $KEY' /root/consumer-rly.json > /root/consumer-rly-tmp.json && mv /root/consumer-rly-tmp.json /root/consumer-rly.json
     jq --arg CHAINID $CONSUMER_CHAINID '.value."chain-id" = $CHAINID' /root/consumer-rly.json > /root/consumer-rly-tmp.json && mv /root/consumer-rly-tmp.json /root/consumer-rly.json
     jq --arg RPCADDR $CONSUMER_RPC_ADDRESS '.value."rpc-addr" = $RPCADDR' /root/consumer-rly.json > /root/consumer-rly-tmp.json && mv /root/consumer-rly-tmp.json /root/consumer-rly.json
@@ -158,6 +166,7 @@ GenerateChainFiles()
     jq --arg ACCTPREFIX $CONSUMER_CHAIN_ADDRESS_PREFIX '.value."account-prefix" = $ACCTPREFIX' /root/consumer-rly.json > /root/consumer-rly-tmp.json && mv /root/consumer-rly-tmp.json /root/consumer-rly.json
     jq --argjson MAXGAS $CONSUMER_RLY_MAXGASAMT '.value."max-gas-amount" = $MAXGAS' /root/consumer-rly.json > /root/consumer-rly-tmp.json && mv /root/consumer-rly-tmp.json /root/consumer-rly.json
     jq --argjson MINGAS $CONSUMER_RLY_MINGASAMT '.value."min-gas-amount" = $MINGAS' /root/consumer-rly.json > /root/consumer-rly-tmp.json && mv /root/consumer-rly-tmp.json /root/consumer-rly.json
+    jq --arg BROADCASTMODE $CONSUMER_RLY_BROADCAST_MODE '.value."broadcast-mode" = $BROADCASTMODE' /root/consumer-rly.json > /root/consumer-rly-tmp.json && mv /root/consumer-rly-tmp.json /root/consumer-rly.json
 
     Logger "Exiting function GenerateChainFiles"
 }
@@ -165,7 +174,6 @@ GenerateChainFiles()
 ConfigRelayer()
 {
     Logger "Starting function ConfigRelayer"
-    local PATHNAME=pc
     rly chains add $PROVIDER_CHAIN --file /root/provider-rly.json --home .relayer 1>> $LOGFILE 2>> $ERRFILE
     RETCODE=$?
     CheckRetcode $RETCODE 1 "Could not add chain $PROVIDER_CHAINID to relayer config. Return code was $RETCODE. Exiting"
@@ -214,7 +222,7 @@ LinkRelayer()
     Logger "Now connecting $PROVIDER_CHAIN and $CONSUMER_CHAIN. This can take a few minutes..."
     until [ $cnt -ge 3 ];
     do    
-        (echo $KEYPASSWD; sleep 1; echo $KEYPASSWD) | rly transact link pc --home .relayer --src-port $RLY_SRC_PORT --dst-port $RLY_DST_PORT --order $RLY_ORDERING --version $RLY_CHANNEL_VERSION 1>> $LOGFILE 2>> $ERRFILE
+        (echo $KEYPASSWD; sleep 1; echo $KEYPASSWD) | rly transact link $PATHNAME --home .relayer --src-port $RLY_SRC_PORT --dst-port $RLY_DST_PORT --order $RLY_ORDERING --version $RLY_CHANNEL_VERSION 1>> $LOGFILE 2>> $ERRFILE
         RETCODE_LNK=$?
         Logger "DEBUG RETCODE is $RETCODE_LNK"
         if [ $RETCODE_LNK -ne 0 ];
@@ -278,6 +286,4 @@ GenerateChainFiles
 ConfigRelayer
 CheckLaunchReadiness
 LinkRelayer
-# Logger "Debug sleep"
-# sleep 600
-(echo $KEYPASSWD; sleep 1; echo $KEYPASSWD) | rly start pc --home .relayer
+(echo $KEYPASSWD; sleep 1; echo $KEYPASSWD) | rly start $PATHNAME --home .relayer
